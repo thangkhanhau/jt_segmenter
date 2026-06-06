@@ -92,7 +92,7 @@ A GPU is optional — the app also runs on CPU.
 
 The fine-tuned weights are archived on Zenodo:
 
-> **DOI:** [10.5281/zenodo.XXXXXXX](https://doi.org/10.5281/zenodo.XXXXXXX)
+> **DOI:** [10.5281/zenodo.20572587](https://doi.org/10.5281/zenodo.20572587)
 
 You do not need to download it manually. On first launch the app checks for the
 checkpoint and, if it is missing, downloads it from Zenodo into `checkpoints/`
@@ -149,20 +149,8 @@ for transparency.
 
 ---
 
-## Corpus statistics
-
-| Split       | Documents | Sentences | Tokens |
-|-------------|-----------|-----------|--------|
-| Training    | `<n>`     | `<n>`     | `<n>`  |
-| Validation  | `<n>`     | `<n>`     | `<n>`  |
-| Test        | `<n>`     | `<n>`     | `<n>`  |
-
 - **Language:** Mizo (Lushai)
 - **Sources:** publicly available Mizo websites (news, government), crawled per `robots.txt`
-- **Validation performance:** F1 `<value>` · Precision `<value>` · Recall `<value>`
-
-*(Fill in the values from your notebook outputs.)*
-
 ---
 
 ## Citation
@@ -176,8 +164,8 @@ accompanying paper:
   author    = {Thangkhanhau et al.},
   year      = {2026},
   publisher = {},
-  doi       = {10.5281/zenodo.XXXXXXX},
-  url       = {https://doi.org/10.5281/zenodo.XXXXXXX}
+  doi       = {10.5281/zenodo.20572587},
+  url       = {https://doi.org/10.5281/zenodo.20572587}
 }
 
 @article{jtsegmenter_paper,
