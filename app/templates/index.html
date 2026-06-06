@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JT Segmenter — Mizo Sentence Segmentation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <header>
+    <h1>JT Segmenter</h1>
+    <p class="tagline">Mizo Sentence Segmentation · XLM-R-base + CRF</p>
+    <div class="model-info">
+      <span class="badge">Encoder: {{ model_info.encoder }}</span>
+      <span class="badge">Device: {{ model_info.device }}</span>
+      <span class="badge">Best epoch: {{ model_info.best_epoch }}</span>
+      <span class="badge highlight">Val F1: {{ model_info.val_f1 }}</span>
+      <span class="badge">Val P: {{ model_info.val_p }}</span>
+      <span class="badge">Val R: {{ model_info.val_r }}</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Upload Mizo text</h2>
+      <p class="hint">
+        Drop one or more <code>.txt</code> files (UTF-8, one paragraph per line)
+        or paste text below. Max {{ max_mb }} MB per upload. Preprocessing
+        (NFC normalisation, tag stripping, whitespace cleanup) runs automatically.
+      </p>
+
+      <form id="seg-form">
+        <div id="dropzone" class="dropzone">
+          <input type="file" id="files" name="files" multiple accept=".txt" hidden>
+          <p class="dz-prompt">
+            <strong>Drop .txt files here</strong> or click to browse
+          </p>
+          <ul id="file-list"></ul>
+        </div>
+
+        <details class="paste-block">
+          <summary>Or paste text directly</summary>
+          <textarea name="pasted_text" id="pasted_text" rows="8"
+                    placeholder="Paste raw Mizo paragraphs here, one paragraph per line..."></textarea>
+        </details>
+
+        <div class="actions">
+          <button type="submit" id="run-btn">Segment</button>
+          <button type="button" id="clear-btn" class="secondary">Clear</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="status" class="status hidden">
+      <div class="spinner"></div>
+      <p id="status-text">Running JT Segmenter...</p>
+    </section>
+
+    <section id="results" class="hidden"></section>
+
+  </main>
+
+  <footer>
+    <p>JT Segmenter · Local inference · No data leaves your machine.</p>
+  </footer>
+
+  <script>
+    const dz       = document.getElementById('dropzone');
+    const fileIn   = document.getElementById('files');
+    const fileList = document.getElementById('file-list');
+    const form     = document.getElementById('seg-form');
+    const runBtn   = document.getElementById('run-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const statusEl = document.getElementById('status');
+    const statusTx = document.getElementById('status-text');
+    const results  = document.getElementById('results');
+    const pasted   = document.getElementById('pasted_text');
+
+    let selectedFiles = [];
+
+    function renderFileList() {
+      fileList.innerHTML = '';
+      selectedFiles.forEach((f, i) => {
+        const li = document.createElement('li');
+        const sizeKB = (f.size / 1024).toFixed(1);
+        li.innerHTML = `<span>${f.name}</span>
+                        <span class="file-meta">${sizeKB} KB</span>
+                        <button type="button" data-idx="${i}" class="remove-btn">×</button>`;
+        fileList.appendChild(li);
+      });
+    }
+
+    fileList.addEventListener('click', e => {
+      if (e.target.matches('.remove-btn')) {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        selectedFiles.splice(idx, 1);
+        renderFileList();
+      }
+    });
+
+    dz.addEventListener('click', e => {
+      if (e.target.closest('.remove-btn')) return;
+      fileIn.click();
+    });
+
+    fileIn.addEventListener('change', () => {
+      for (const f of fileIn.files) selectedFiles.push(f);
+      fileIn.value = '';
+      renderFileList();
+    });
+
+    ['dragenter','dragover'].forEach(ev =>
+      dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(ev =>
+      dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+    dz.addEventListener('drop', e => {
+      for (const f of e.dataTransfer.files) {
+        if (f.name.toLowerCase().endsWith('.txt')) selectedFiles.push(f);
+      }
+      renderFileList();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      selectedFiles = [];
+      renderFileList();
+      pasted.value = '';
+      results.classList.add('hidden');
+      results.innerHTML = '';
+    });
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (selectedFiles.length === 0 && !pasted.value.trim()) {
+        alert('Please upload at least one .txt file or paste some text.');
+        return;
+      }
+      const fd = new FormData();
+      for (const f of selectedFiles) fd.append('files', f);
+      if (pasted.value.trim()) fd.append('pasted_text', pasted.value);
+
+      runBtn.disabled = true;
+      results.classList.add('hidden');
+      results.innerHTML = '';
+      statusEl.classList.remove('hidden');
+      statusTx.textContent =
+        `Segmenting ${selectedFiles.length || 0} file(s)` +
+        (pasted.value.trim() ? ' + pasted text' : '') + '...';
+
+      try {
+        const t0 = performance.now();
+        const res = await fetch('/segment', { method: 'POST', body: fd });
+        const data = await res.json();
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+
+        if (!res.ok) {
+          renderError(data.error || 'Unknown error');
+        } else {
+          renderResults(data, elapsed);
+        }
+      } catch (err) {
+        renderError('Network error: ' + err.message);
+      } finally {
+        runBtn.disabled = false;
+        statusEl.classList.add('hidden');
+      }
+    });
+
+    function renderError(msg) {
+      results.classList.remove('hidden');
+      results.innerHTML = `<div class="card error"><h3>Error</h3><p>${msg}</p></div>`;
+    }
+
+    function renderResults(data, elapsed) {
+      results.classList.remove('hidden');
+      let html = `<div class="card">
+        <h2>Results</h2>
+        <p class="meta">Total time: ${data.total_seconds}s
+          (round-trip including UI: ${elapsed}s) ·
+          Job ID: <code>${data.job_id}</code></p>`;
+
+      if (data.bundle_url) {
+        html += `<p><a class="btn-download" href="${data.bundle_url}">
+                   Download all results (ZIP)
+                 </a></p>`;
+      }
+
+      data.results.forEach(r => {
+        if (r.error) {
+          html += `<div class="result-block error">
+            <h3>${r.input_name}</h3>
+            <p>${r.error}</p>
+          </div>`;
+          return;
+        }
+        html += `<div class="result-block">
+          <h3>${r.input_name}</h3>
+          <table class="stats">
+            <tr><th>Paragraphs</th><td>${r.n_paragraphs.toLocaleString()}</td>
+                <th>Sentences</th><td>${r.n_sentences.toLocaleString()}</td></tr>
+            <tr><th>Avg sent/para</th><td>${r.avg_per_para}</td>
+                <th>Inference time</th><td>${r.seconds}s</td></tr>
+            <tr><th>Tokens</th><td>${r.stats.total_tokens.toLocaleString()}</td>
+                <th>Empty lines dropped</th><td>${r.stats.dropped_empty}</td></tr>
+            <tr><th>P-tags stripped</th><td>${r.stats.stripped_p_tags}</td>
+                <th>Whitespace cleaned</th><td>${r.stats.collapsed_ws}</td></tr>
+          </table>
+          <div class="downloads">
+            <a class="btn-download" href="${r.txt_url}">Download .txt</a>
+            <a class="btn-download secondary" href="${r.jsonl_url}">Download .jsonl</a>
+          </div>
+          <details class="preview">
+            <summary>Preview (first 2 paragraphs)</summary>`;
+        r.preview.forEach(p => {
+          html += `<div class="preview-block">
+            <p class="preview-input"><em>Input:</em> ${escapeHtml(p.input)}</p>
+            <ol class="preview-output">`;
+          p.sentences.forEach(s => {
+            html += `<li>${escapeHtml(s)}</li>`;
+          });
+          html += `</ol></div>`;
+        });
+        html += `</details></div>`;
+      });
+
+      html += `</div>`;
+      results.innerHTML = html;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+      ));
+    }
+  </script>
+</body>
+</html>
