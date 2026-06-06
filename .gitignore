@@ -1,0 +1,8 @@
+checkpoints/
+*.pt
+uploads/
+outputs/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
